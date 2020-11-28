@@ -1,28 +1,29 @@
-const stuff = require('./info');
-const fs = require('fs');
+const loadPost = require('../request/post_body');
+const sessions = require('../data/sessions');
+const asset = require('./main');
 
 module.exports = function (req, res, url) {
-	const methodLinks = stuff[req.method];
-	for (let linkIndex in methodLinks) {
-		var regex = new RegExp(linkIndex);
-		if (regex.test(url.path)) {
-			const t = methodLinks[linkIndex];
-			const link = t.regexLink ? url.path.replace(
-				regex, t.regexLink) : (t.link || url.path);
-			const headers = t.headers;
+	switch (req.method) {
+		case 'GET':
+			const match = req.url.match(/\/assets\/([^/]+)\/([^.]+)(?:\.xml)?$/);
+			if (!match) return;
 
-			try {
-				for (var headerName in headers || {})
-					res.setHeader(headerName, headers[headerName]);
-				res.statusCode = t.statusCode || 200;
-				if (t.content !== undefined) res.end(t.content);
-				else fs.createReadStream(`./${link}`).pipe(res);
-			}
-			catch (e) {
-				res.statusCode = t.statusCode || 404, res.end();
-			}
+			const mId = match[1], aId = match[2];
+			const b = asset.load(mId, aId);
+			b ? (res.statusCode = 200, res.end(v)) :
+				(res.statusCode = 404, res.end(e));
 			return true;
-		}
+
+		case 'POST':
+			if (url.path != '/goapi/getAsset/' && url.path != '/goapi/getAssetEx/') return;
+			loadPost(req, res).then(data => {
+				const mId = data.movieId || data.presaveId || sessions.get(req);
+				const aId = data.assetId || data.enc_asset_id;
+
+				const b = asset.load(mId, aId);
+				sessions.set({ movieId: mId }, req);
+				b ? res.end(b) : (res.statusCode = 404, res.end());
+			});
+			return true;
 	}
-	return false;
 }
